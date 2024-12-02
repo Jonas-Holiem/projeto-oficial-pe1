@@ -52,6 +52,11 @@ use App\Livewire\SobreNos;
 
 Route::get('/sobre-nos', SobreNos::class)->name('sobre-nos');
 
+use App\Livewire\ChatBot;
+
+
+Route::get('/chatbot', ChatBot::class);
+
 
 
 
