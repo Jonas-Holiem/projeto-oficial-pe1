@@ -2,6 +2,7 @@
     <div class="container">
         <h2>Calcular Tempo de Entrega</h2>
 
+
         <!-- Formulário de endereço -->
         <form wire:submit.prevent="calcularTempo">
             <div>
@@ -21,5 +22,6 @@
             </div>
         @endif
     </div>
+
 </section>
 

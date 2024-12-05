@@ -23,27 +23,102 @@ class ChatBot extends Component
             'pizza' => ['pizza', 'pizzas'],
             'hamburguer' => ['hambúrguer', 'lanche', 'hamburgueres', 'hamburguer'],
             'sushi' => ['sushi', 'sushis'],
-            'bebida' => ['bebida', 'bebidas', 'refrigerante', 'suco', 'cerveja','beber','água','agua']
+            'bebida' => ['bebida', 'bebidas', 'refrigerante', 'suco', 'cerveja', 'beber', 'água', 'agua']
         ];
 
         $specialKeywords = [
-            'vegano' => ['vegano', 'vegetariano', 'lanche vegano', 'comida vegana', 'lanche vegetariano','vegana']
+            'vegano' => ['vegano', 'vegetariano', 'lanche vegano', 'comida vegana', 'lanche vegetariano', 'vegana']
         ];
 
         $attendantKeywords = [
-            'falar com atendente', 
-            'entrar em contato', 
-            'como falo com alguém', 
-            'ajuda humana', 
-            'atendente', 
-            'suporte humano'
+            'falar com atendente',
+            'entrar em contato',
+            'como falo com alguém',
+            'ajuda',
+            'atendente',
+            'suporte'
         ];
 
-        // Verifica se o usuário pergunta sobre o cardápio ou comida
-        $menuKeywords = ['cardápio', 'comer', 'menu', 'o que tem para comer','produto', 'o que tem no menu', 'comida', 'alimento', 'cardapio','prato'];
+        $menuKeywords = ['cardápio', 'comer', 'menu', 'o que tem para comer', 'produto', 'o que tem no menu', 'comida', 'alimento', 'cardapio', 'prato'];
+        $paymentKeywords = ['forma de pagamento', 'pagamento', 'como pagar', 'formas de pagamento', 'aceita cartão', 'aceita vale refeição'];
+
+        // Palavras-chave para perguntas de recomendação
+        $recommendationKeywords = ['recomendaria', 'recomenda', 'devo escolher', 'recomendação', 'recomeda'];
+
+        // Palavras-chave para perguntas de "mais pedidos"
+        $popularKeywords = ['mais pedidos hoje em dia', 'mais pedido', 'mais pedida', 'mais comprado','mais comprada'];
+
+        // Verifica se a mensagem contém palavras-chave de "mais pedidos"
+        foreach ($popularKeywords as $keyword) {
+            if (stripos($this->userMessage, $keyword) !== false) {
+                // Faz a consulta ao GPT-4 sobre o item mais pedido
+                try {
+                    $response = Http::withHeaders([
+                        'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
+                    ])->withoutVerifying()->post('https://api.openai.com/v1/chat/completions', [
+                        'model' => 'gpt-4',
+                        'messages' => array_merge(
+                            [['role' => 'system', 'content' => 'Você é um chatbot especializado em tirar dúvidas sobre delivery e tendências de comida.']],
+                            array_map(fn($msg) => [
+                                'role' => $msg['sender'] === 'user' ? 'user' : 'assistant',
+                                'content' => $msg['text'],
+                            ], $this->messages)
+                        ),
+                    ]);
+
+                    if ($response->successful() && isset($response->json()['choices'][0]['message']['content'])) {
+                        $aiResponse = $response->json()['choices'][0]['message']['content'];
+                        $this->messages[] = ['sender' => 'bot', 'text' => $aiResponse];
+                    } else {
+                        $errorMessage = $response->json('error.message', 'Erro desconhecido ao obter resposta da IA.');
+                        $this->messages[] = ['sender' => 'bot', 'text' => "Desculpe, ocorreu um problema: $errorMessage"];
+                    }
+                } catch (\Exception $e) {
+                    $this->messages[] = ['sender' => 'bot', 'text' => 'Desculpe, ocorreu um erro ao se conectar à API.'];
+                }
+
+                $this->userMessage = '';
+                return;
+            }
+        }
+
+        // Verifica se a mensagem contém palavras-chave de recomendação
+        foreach ($recommendationKeywords as $keyword) {
+            if (stripos($this->userMessage, $keyword) !== false) {
+                // Faz a consulta ao GPT-4 para uma recomendação personalizada
+                try {
+                    $response = Http::withHeaders([
+                        'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
+                    ])->withoutVerifying()->post('https://api.openai.com/v1/chat/completions', [
+                        'model' => 'gpt-4',
+                        'messages' => array_merge(
+                            [['role' => 'system', 'content' => 'Você é um chatbot especializado em tirar dúvidas sobre delivery e fazer recomendações de cardápio.']],
+                            array_map(fn($msg) => [
+                                'role' => $msg['sender'] === 'user' ? 'user' : 'assistant',
+                                'content' => $msg['text'],
+                            ], $this->messages)
+                        ),
+                    ]);
+
+                    if ($response->successful() && isset($response->json()['choices'][0]['message']['content'])) {
+                        $aiResponse = $response->json()['choices'][0]['message']['content'];
+                        $this->messages[] = ['sender' => 'bot', 'text' => $aiResponse];
+                    } else {
+                        $errorMessage = $response->json('error.message', 'Erro desconhecido ao obter resposta da IA.');
+                        $this->messages[] = ['sender' => 'bot', 'text' => "Desculpe, ocorreu um problema: $errorMessage"];
+                    }
+                } catch (\Exception $e) {
+                    $this->messages[] = ['sender' => 'bot', 'text' => 'Desculpe, ocorreu um erro ao se conectar à API.'];
+                }
+
+                $this->userMessage = '';
+                return;
+            }
+        }
+
+        // Verifica perguntas sobre o cardápio ou comida
         foreach ($menuKeywords as $keyword) {
             if (stripos($this->userMessage, $keyword) !== false) {
-                // Busca todos os produtos no banco de dados
                 $products = Product::all();
                 $menuResponse = "Aqui está o nosso cardápio:\n";
 
@@ -55,9 +130,8 @@ class ChatBot extends Component
                     }
                 }
 
-                // Adiciona a resposta ao histórico
                 $this->messages[] = ['sender' => 'bot', 'text' => $menuResponse];
-                $this->userMessage = ''; // Limpa a entrada do usuário
+                $this->userMessage = '';
                 return;
             }
         }
@@ -73,9 +147,45 @@ class ChatBot extends Component
                     $menuResponse = "Desculpe, no momento não temos itens veganos ou vegetarianos disponíveis.";
                 }
 
-                // Adiciona a resposta ao histórico
                 $this->messages[] = ['sender' => 'bot', 'text' => $menuResponse];
-                $this->userMessage = ''; // Limpa a entrada do usuário
+                $this->userMessage = '';
+                return;
+            }
+        }
+
+        // Verifica perguntas sobre formas de pagamento
+        foreach ($paymentKeywords as $keyword) {
+            if (stripos($this->userMessage, $keyword) !== false) {
+                try {
+                    $response = Http::withHeaders([
+                        'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
+                    ])->withoutVerifying()->post('https://api.openai.com/v1/chat/completions', [
+                        'model' => 'gpt-4',
+                        'messages' => array_merge(
+                            [['role' => 'system', 'content' => 'Você é um chatbot especializado em tirar dúvidas sobre delivery.']],
+                            array_map(fn($msg) => [
+                                'role' => $msg['sender'] === 'user' ? 'user' : 'assistant',
+                                'content' => $msg['text'],
+                            ], $this->messages)
+                        ),
+                    ]);
+
+                    if ($response->successful() && isset($response->json()['choices'][0]['message']['content'])) {
+                        $aiResponse = $response->json()['choices'][0]['message']['content'];
+
+                        $aiResponse .= "\n\n**No caso da Hot Delivery**, aceitamos dinheiro, cartão de débito/crédito ou Vale Refeição.";
+
+                        $this->messages[] = ['sender' => 'bot', 'text' => $aiResponse];
+                        $this->userMessage = '';
+                        return;
+                    } else {
+                        $errorMessage = $response->json('error.message', 'Erro desconhecido ao obter resposta da IA.');
+                        $this->messages[] = ['sender' => 'bot', 'text' => "Desculpe, ocorreu um problema: $errorMessage"];
+                    }
+                } catch (\Exception $e) {
+                    $this->messages[] = ['sender' => 'bot', 'text' => 'Desculpe, ocorreu um erro ao se conectar à API.'];
+                }
+
                 return;
             }
         }
@@ -89,9 +199,8 @@ class ChatBot extends Component
                 $attendantResponse .= "3. Redes sociais: Você pode nos enviar uma mensagem privada nas redes sociais.\n";
                 $attendantResponse .= "\n**No caso da Hot Delivery**, temos uma página de Contato com todas as informações de contato que você precisa. Visite nossa página para mais detalhes.";
 
-                // Adiciona a resposta ao histórico
                 $this->messages[] = ['sender' => 'bot', 'text' => $attendantResponse];
-                $this->userMessage = ''; // Limpa a entrada do usuário
+                $this->userMessage = '';
                 return;
             }
         }
@@ -101,15 +210,13 @@ class ChatBot extends Component
         foreach ($categoryKeywords as $key => $keywords) {
             foreach ($keywords as $keyword) {
                 if (stripos($this->userMessage, $keyword) !== false) {
-                    $category = $key; // Atribui a categoria correspondente
-                    break 2; // Sai dos loops assim que encontrar uma correspondência
+                    $category = $key;
+                    break 2;
                 }
             }
         }
 
-        // Se o usuário perguntar sobre um tipo específico de produto
         if ($category) {
-            // Filtra os produtos pela categoria
             $products = Product::where('category', $category)->get();
             $menuResponse = "Aqui estão as opções de $category:\n";
 
@@ -121,10 +228,8 @@ class ChatBot extends Component
                 }
             }
 
-            // Adiciona a resposta ao histórico
             $this->messages[] = ['sender' => 'bot', 'text' => $menuResponse];
         } else {
-            // Se a pergunta não foi sobre categoria específica, pergunta para o OpenAI
             try {
                 $response = Http::withHeaders([
                     'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
@@ -142,7 +247,6 @@ class ChatBot extends Component
                 if ($response->successful() && isset($response->json()['choices'][0]['message']['content'])) {
                     $aiResponse = $response->json()['choices'][0]['message']['content'];
 
-                    // Adiciona a resposta da IA ao histórico
                     $this->messages[] = ['sender' => 'bot', 'text' => $aiResponse];
                 } else {
                     $errorMessage = $response->json('error.message', 'Erro desconhecido ao obter resposta da IA.');
@@ -153,7 +257,6 @@ class ChatBot extends Component
             }
         }
 
-        // Limpa a entrada do usuário
         $this->userMessage = '';
     }
 
